@@ -1,0 +1,17 @@
+# Render Blueprint — deploy máy chủ phòng "Cuộc Đời Việt" bằng 1 lần bấm.
+# Cách dùng: trong bảng điều khiển Render bấm New → Blueprint, chọn repo
+# cuoc-doi-viet-phong (đã tải 4 file trong thư mục này lên GitHub) là xong —
+# không cần điền Build/Start Command tay. Gói Free, không cần thẻ tín dụng.
+# Máy chủ ngủ sau 15 phút không ai dùng, người đầu tiên vào phòng chờ
+# ~1 phút để nó thức dậy (xem HOST-MOI.md).
+services:
+  - type: web
+    name: cuoc-doi-viet-phong
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "20"

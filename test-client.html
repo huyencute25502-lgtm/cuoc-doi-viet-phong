@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Test phòng chơi — Cuộc Đời Việt</title>
+<style>
+  body{font-family:system-ui,sans-serif;max-width:640px;margin:0 auto;padding:16px;line-height:1.5;background:#fdf6ec;color:#3a2a1a}
+  h1{font-size:20px} input,button{font-size:16px;padding:8px 10px;margin:4px 2px}
+  button{cursor:pointer;background:#b3352b;color:#fff;border:0;border-radius:8px}
+  button:disabled{opacity:.5}
+  #log{white-space:pre-wrap;background:#fff;border:1px solid #e0cfae;border-radius:8px;padding:10px;height:180px;overflow:auto;font-size:13px}
+  #board li{margin:4px 0} .dead{color:#888} .me{font-weight:700}
+  .box{background:#fff;border:1px solid #e0cfae;border-radius:10px;padding:12px;margin:10px 0}
+</style>
+</head>
+<body>
+<h1>🛖 Test phòng chơi — Cuộc Đời Việt</h1>
+<div class="box">
+  <label>Tên của bạn: <input id="name" value="An" maxlength="12"></label><br>
+  <button id="btnCreate">Tạo phòng</button>
+  <label>Mã phòng: <input id="code" size="6" maxlength="4" placeholder="ABCD"></label>
+  <button id="btnJoin">Vào phòng</button>
+  <button id="btnLeave" disabled>Rời phòng</button>
+  <div id="roomInfo"></div>
+</div>
+<div class="box" id="playBox" hidden>
+  <p>Tuổi của bạn: <b id="myAge">0</b>
+  <button id="btnYear">+1 tuổi</button>
+  <button id="btnDie">💀 Chết (kết thúc đời)</button></p>
+  <h3>🏆 Bảng xếp hạng trực tiếp</h3>
+  <ol id="board"></ol>
+  <div id="final"></div>
+</div>
+<div class="box"><h3>Nhật ký</h3><div id="log"></div></div>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+const socket=io();
+let myName='', myAge=0, myCode='';
+function log(m){const el=$('log');el.textContent+=new Date().toLocaleTimeString('vi-VN')+' '+m+'\n';el.scrollTop=el.scrollHeight;}
+socket.on('connect',()=>log('Đã kết nối máy chủ phòng.'));
+socket.on('disconnect',()=>log('Mất kết nối máy chủ.'));
+socket.on('room-created',d=>{myCode=d.code;enterRoom(d.state);$('roomInfo').innerHTML='Mã phòng của bạn: <b style="font-size:22px">'+d.code+'</b> · Link mời: <span>'+d.link+'</span>';log('Đã tạo phòng '+d.code);});
+socket.on('joined',d=>{enterRoom(d.state);log('Đã vào phòng '+d.state.code);});
+socket.on('join-error',d=>{log('LỖI: '+d.message);alert(d.message);});
+socket.on('player-joined',d=>log(d.name+' vừa vào phòng.'));
+socket.on('player-left',d=>log(d.name+' đã rời phòng.'));
+socket.on('room-state',render);
+socket.on('room-finished',d=>{
+  const rank=d.ranking.map((p,i)=>(i+1)+'. '+p.name+' — '+p.finalAge+' tuổi').join('\n');
+  $('final').innerHTML='<h3>🎉 Phòng đã kết thúc!</h3><pre>'+rank+'</pre>';
+  log('Phòng kết thúc. Xếp hạng:\n'+rank);
+});
+function enterRoom(state){$('playBox').hidden=false;$('btnLeave').disabled=false;$('btnCreate').disabled=true;$('btnJoin').disabled=true;render(state);}
+function render(state){
+  if(!state||!state.players)return;
+  myCode=state.code;
+  $('board').innerHTML=state.players.map(p=>{
+    const tag=p.alive?('🟢 '+p.age+' tuổi'):('🕯️ '+p.finalAge+' tuổi (đã mất)');
+    const off=p.online?'':' (mất kết nối)';
+    return '<li class="'+(p.alive?'':'dead')+(p.name===myName?' me':'')+'">'+p.name+' — '+tag+off+'</li>';
+  }).join('');
+  $('roomInfo').innerHTML='Phòng <b>'+state.code+'</b> · '+(state.status==='finished'?'Đã kết thúc':'Đang chơi')+' · '+state.players.length+' người';
+}
+$('btnCreate').onclick=()=>{myName=$('name').value.trim();if(!myName)return alert('Nhập tên đã.');socket.emit('create-room',{name:myName});};
+$('btnJoin').onclick=()=>{myName=$('name').value.trim();const code=$('code').value.trim();if(!myName)return alert('Nhập tên đã.');if(!code)return alert('Nhập mã phòng đã.');socket.emit('join-room',{code,name:myName});};
+$('btnLeave').onclick=()=>{socket.emit('leave-room');location.reload();};
+$('btnYear').onclick=()=>{if(myAge>=110)return;myAge++;$('myAge').textContent=myAge;socket.emit('progress',{age:myAge});};
+$('btnDie').onclick=()=>{socket.emit('died',{finalAge:myAge});$('btnYear').disabled=true;$('btnDie').disabled=true;log('Bạn đã mất ở tuổi '+myAge);};
+</script>
+</body>
+</html>
