@@ -11,8 +11,11 @@
  *         https://cuocdoiviet.netlify.app/?phong=CODE
  *   2. Bạn bè nhập mã (hoặc bấm link mời) -> gửi `join-room` { code, name }
  *      -> nhận `joined` { state } hoặc `join-error` { message }
- *   3. Trong lúc chơi, mỗi client gửi `progress` { age } mỗi khi lên 1 tuổi
- *      (server giới hạn 1 tin/giây/người, phát trạng thái phòng tối đa 1 lần/giây).
+ *   3. Trong lúc chơi, mỗi client gửi `progress` { age, job?, money? } mỗi khi
+ *      lên 1 tuổi (server giới hạn 1 tin/giây/người, phát trạng thái phòng tối
+ *      đa 1 lần/giây). job = nghề hiện tại, money = tiền (triệu đồng) — để
+ *      bảng xếp hạng hiện đủ nghề + tiền. Client cũ chỉ gửi { age } vẫn
+ *      chạy bình thường (job/money null -> bảng hiện '—').
  *   4. Khi một người chết, client gửi `died` { finalAge }.
  *      Khi mọi người trong phòng đều đã chết -> server phát `room-finished`
  *      kèm bảng xếp hạng cuối cùng (tuổi thọ giảm dần).
@@ -82,6 +85,8 @@ const io = new Server(server, {
 //          lastBroadcast }
 // Player = { id (socket id hiện tại, '' nếu offline), name, age, alive,
 //            finalAge, online, diedAt, lastSeen,
+//            job: null | string (nghề hiện tại, client gửi qua progress),
+//            money: null | number (tiền, triệu đồng, client gửi qua progress),
 //            card: null | { job, province, married, children, age, cause, note }
 //            (thẻ đời tóm tắt, client gửi qua life-card),
 //            targetBeaten: false (đã sống qua mốc thách đấu của phòng chưa) }
@@ -117,6 +122,8 @@ function publicState(room) {
       alive: p.alive,
       finalAge: p.finalAge,
       online: p.online,
+      job: p.job || null,
+      money: (typeof p.money === 'number' && Number.isFinite(p.money)) ? p.money : null,
       card: p.card || null,
       targetBeaten: !!p.targetBeaten,
     }))
@@ -306,6 +313,8 @@ function startRematch(room) {
       p.finalAge = null;
       p.diedAt = null;
       p.card = null;
+      p.job = null;
+      p.money = null;
       p.targetBeaten = false;
       p.lastSeen = Date.now();
     } else {
@@ -393,6 +402,8 @@ io.on('connection', (socket) => {
       diedAt: null,
       lastSeen: Date.now(),
       card: null,
+      job: null,
+      money: null,
       targetBeaten: false,
     });
     currentRoom = code;
@@ -458,6 +469,8 @@ io.on('connection', (socket) => {
         diedAt: null,
         lastSeen: Date.now(),
         card: null,
+        job: null,
+        money: null,
         targetBeaten: false,
       });
     }
@@ -477,7 +490,7 @@ io.on('connection', (socket) => {
     if (room) socket.emit('room-state', publicState(room));
   });
 
-  socket.on('progress', ({ age } = {}) => {
+  socket.on('progress', ({ age, job, money } = {}) => {
     const player = myPlayer();
     if (!player || !player.alive) return;
     const now = Date.now();
@@ -489,6 +502,10 @@ io.on('connection', (socket) => {
     // (ví dụ từ 5 lên 50) cũng bỏ qua — chống client báo tuổi gian lận.
     if (a !== player.age + 1) return;
     player.age = a;
+    // Nghề + tiền để bảng xếp hạng hiện đủ: chỉ lưu khi đúng kiểu
+    // (job là chuỗi, money là số hữu hạn), sai kiểu thì bỏ qua, không crash.
+    if (typeof job === 'string' && job.trim()) player.job = job.trim().slice(0, 30);
+    if (typeof money === 'number' && Number.isFinite(money)) player.money = money;
     player.lastSeen = now;
     const room = rooms.get(currentRoom);
     // Vượt mốc thách đấu (v8-D): tuổi chạm mốc lần đầu thì thông báo chung
